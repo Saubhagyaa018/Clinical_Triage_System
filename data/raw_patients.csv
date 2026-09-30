@@ -1,0 +1,5 @@
+patient_id,name,age,gender,chief_complaint,past_medical_history,active_medications,heart_rate,bp_systolic,bp_diastolic,respiratory_rate,spo2,temperature_c
+P001,John Doe,62,Male,Severe substernal chest pain spreading to left arm,"Hypertension, Type 2 Diabetes, Hyperlipidemia","Lisinopril 10mg, Metformin 500mg, Atorvastatin 20mg",115,160,95,24,93,37.2
+P002,Jane Smith,28,Female,Mild runny nose and sore throat for 2 days,"Asthma (mild, intermittent)","Albuterol inhaler as needed",72,118,76,14,99,36.8
+P003,Robert Brown,71,Male,Sudden onset weakness on right side of body and slurred speech,"Atrial Fibrillation, Prior TIA (2021), Hypertension","Warfarin 5mg, Amlodipine 5mg",88,185,110,18,96,36.6
+P004,Alice Johnson,45,Female,Shortness of breath and wheezing after exercise,"Moderate Persistent Asthma","Fluticasone inhaler daily",110,135,85,28,89,37.0
