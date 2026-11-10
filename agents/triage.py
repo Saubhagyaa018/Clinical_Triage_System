@@ -1,20 +1,31 @@
-import os
-from dotenv import load_dotenv
+# import os
+# from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from config import settings
+from pydantic import BaseModel
+from config import settings
 
-load_dotenv()
+
+
+class TriageResult(BaseModel):
+    news2_score: int
+    news2_risk: str
+    esi_level: int
+    triage_assessment: str
+
+# load_dotenv()
 
 class TriageAgent:
     """Agent 4: Combines deterministic NEWS2 mathematical scoring with LLM-based ESI Level classification."""
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables. Check your .env file.")
+        self.model = settings.GEMINI_MODEL
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not found")
         
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-3.8-flash"
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model_name = settings.GEMINI_MODEL
 
     def calculate_news2_score(self, vitals: dict) -> tuple[int, str]:
         """Calculates standard NHS NEWS2 score deterministically from vitals."""
@@ -79,8 +90,13 @@ class TriageAgent:
         """Computes NEWS2 score and prompts Gemini for ESI triage level classification."""
         
         # Calculate NEWS2
-        news2_score, news2_risk = self.calculate_news2_score(patient_payload['vitals'])
+        print("DEBUG: Patient vitals:", repr(patient_payload.get("vitals")))
 
+        news2_score, news2_risk = self.calculate_news2_score(
+        patient_payload["vitals"])
+
+        print("DEBUG: NEWS2 score:", news2_score)
+        print("DEBUG: NEWS2 risk:", news2_risk)
         prompt = f"""You are an Emergency Triage Physician assigning an Emergency Severity Index (ESI) Level (1-5).
 
 PATIENT OVERVIEW:
@@ -90,19 +106,28 @@ PATIENT OVERVIEW:
 
 CLINICAL SUMMARY:
 {clinical_summary}
-
 INSTRUCTIONS:
-Assign an ESI Triage Level (1 to 5) based on standard triage criteria:
-- ESI Level 1: Immediate life-saving intervention required.
-- ESI Level 2: High risk, confused/lethargic/disoriented, or severe pain/distress.
-- ESI Level 3: Stable, but requires multiple resources/tests.
-- ESI Level 4: Stable, requires one resource.
-- ESI Level 5: Non-urgent, requires no resources.
 
-Structure your response clearly with:
-- **Assigned ESI Level:** ESI Level X (Name)
-- **Primary Clinical Justification:** Concise explanation.
-- **Recommended Immediate Triage Actions:** 2-3 bullet points.
+Assign an Emergency Severity Index (ESI) level from 1 to 5 using standard ESI decision criteria and only the information supplied in the current encounter.
+
+ASSESSMENT RULES:
+- Assess whether an immediate life-saving intervention is required before considering lower acuity levels.
+- Assess high-risk presentations, altered mental status, and severe pain or distress using documented evidence.
+- Do not use a NEWS2 score of 0 or normal vital signs alone to exclude ESI 1 or ESI 2.
+- Do not interpret information that is missing from the encounter as a confirmed normal finding. For example, if mental status is not documented, do not state that mental status is normal.
+- Do not treat historical diagnoses or symptoms as current symptoms.
+- Do not infer that a fall involved syncope, caused an injury, or requires imaging unless the supplied evidence supports that conclusion.
+- Assign ESI 3, 4, or 5 according to the expected number of distinct ED resources only after assessing the higher-acuity criteria. Do not invent anticipated tests, imaging, consultations, or procedures merely to justify a level.
+- If important information needed for classification is missing, explicitly identify the uncertainty in the justification. Do not fabricate findings or change the classification simply to match a reference label.
+
+OUTPUT FORMAT:
+Assigned ESI Level: ESI Level X
+
+Primary Clinical Justification:
+Briefly explain the classification using documented current-encounter evidence. Clearly identify important missing information.
+
+Recommended Immediate Triage Actions:
+Provide 2–3 concise actions supported by the available evidence. Do not prescribe tests or monitoring solely on the basis of undocumented assumptions.
 """
 
         response = self.client.models.generate_content(
@@ -110,15 +135,40 @@ Structure your response clearly with:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=500
+                max_output_tokens=2000
             )
         )
+        print("DEBUG: Gemini response text:", repr(response.text))
+        print("DEBUG: Finish reason:", response.candidates[0].finish_reason)
 
-        return {
-            "news2_score": news2_score,
-            "news2_risk": news2_risk,
-            "triage_assessment": response.text
-        }
+        
+        import re
+
+        match = re.search(
+            r"Assigned\s+ESI\s+Level\s*:\s*\**\s*ESI\s+Level\s*([1-5])\b",
+            response.text,
+            re.IGNORECASE,
+        )
+
+        if not match:
+            raise ValueError(
+                "Could not extract a valid ESI level (1-5) "
+                "from the model response. Do not use this result "
+                "for evaluation.\n"
+                f"Model response: {response.text!r}"
+            )
+
+        esi_level = int(match.group(1))
+
+        return TriageResult(
+            news2_score=news2_score,
+            news2_risk=news2_risk,
+            esi_level=esi_level,
+            triage_assessment=response.text,
+        )
+        
+        
+        
 
 
 # Local verification execution

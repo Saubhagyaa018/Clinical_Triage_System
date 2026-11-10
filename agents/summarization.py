@@ -1,29 +1,30 @@
-import os
-from dotenv import load_dotenv
+# import os
+# from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from config import settings
 
 # Load environment variables from .env file
-load_dotenv()
+# load_dotenv()
 
 class SummarizationAgent:
     """Agent 3: Synthesizes filtered patient history and real-time vitals into a grounded clinical summary."""
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables. Please check your .env file.")
-        
+        # api_key = os.getenv("GEMINI_API_KEY")
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not found")
+    
         # Initialize Google GenAI client
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-3.6-flash"
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model_name =  settings.GEMINI_MODEL
 
     def generate_clinical_summary(self, patient_payload: dict, filtered_evidence: list[dict]) -> str:
         """Constructs a strict grounding prompt and invokes Gemini LLM."""
         
         # Format Top-K evidence into clean text for prompt grounding
         evidence_text = "\n".join([
-            f"- {item['clinical_fact']} (Relevance Score: {item['combined_relevance_score']})"
+            f"- {item.clinical_fact} (Relevance Score: {item.combined_relevance_score})"
             for item in filtered_evidence
         ])
 
@@ -38,13 +39,26 @@ GROUNDED HISTORICAL EVIDENCE (Top Semantic Matches):
 {evidence_text}
 
 INSTRUCTIONS:
-Generate a concise, high-density clinical summary strictly using the provided telemetry and grounded historical evidence above.
-Do NOT invent facts, diagnoses, or treatments not implied by the provided data.
 
-Structure your response into 3 concise bulleted sections:
-1. Presenting Clinical Situation: Synthesize Chief Complaint and demographics.
-2. Relevant Grounded History: Explain how the retrieved historical facts increase risk for the current complaint.
-3. Physiological Telemetry Flags: Explicitly state any abnormal vitals requiring immediate triage attention.
+Generate a concise clinical summary using only the current patient information and retrieved historical evidence provided above.
+
+1. Presenting Clinical Situation:
+   - Report the current chief complaint and supplied demographics.
+   - Do not add symptoms that are not explicitly reported in the current encounter.
+
+2. Relevant Grounded History:
+   - Clearly identify retrieved diagnoses as historical records.
+   - Do not describe historical symptoms, such as chest pain or weakness, as current symptoms unless the current encounter explicitly confirms them.
+   - Do not claim that historical diagnoses caused, precipitated, or explain the current presentation.
+   - If the relevance of a historical fact is uncertain, state that its relevance to the current presentation is not established.
+
+3. Physiological Telemetry Flags:
+   - Report abnormalities supported by the supplied vital signs.
+   - Do not claim that normal vital signs rule out a serious condition.
+   - Do not invent examination findings, diagnoses, symptoms, or test results.
+
+GENERAL GROUNDING RULE:
+Every clinical statement must be traceable to the supplied current encounter data or retrieved historical evidence. Distinguish recorded facts from clinical uncertainty. Do not make unsupported causal or risk claims.
 """
 
         interaction = self.client.interactions.create(
@@ -52,9 +66,12 @@ Structure your response into 3 concise bulleted sections:
             input=prompt,
             generation_config={
             "temperature": 0.2,
-            "max_output_tokens": 1000
+            "max_output_tokens": 2000
             }
         )
+        print("DEBUG: Summary output:", repr(interaction.output_text))
+        print("DEBUG: Interaction details:", interaction)
+        print("DEBUG: Summary status:", interaction.status)
 
         return interaction.output_text
 

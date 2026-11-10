@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 data/vector_store/
+.vscode/
+data/mimic_ed/
