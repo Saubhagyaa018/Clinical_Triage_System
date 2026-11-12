@@ -3,7 +3,12 @@ from sqlalchemy import text
 
 from pipeline import ClinicalTriagePipeline
 from utils.database import engine
+def main():
+    st.title("Clinical Triage System")
+    st.write("Welcome to the application")
 
+if __name__ == "__main__":
+    main()
 # --------------------------------------------------
 # Page configuration
 # --------------------------------------------------
